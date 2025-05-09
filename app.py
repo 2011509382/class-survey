@@ -1,15 +1,15 @@
 import streamlit as st
-import os
-import openai
+import requests
 import pandas as pd
 from datetime import datetime
+import os
 
 # 设置页面
 st.set_page_config(page_title="课后问卷", layout="centered")
 st.title("📋 交互式课后问卷")
 
-# 设置 API 密钥（注意安全，部署时应使用 secrets 管理）
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# 获取 API 密钥
+DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
 
 # 问卷对话模板
 system_prompt = """
@@ -21,44 +21,50 @@ system_prompt = """
 请用简洁自然的方式提问，不要一次性提太多问题。
 """
 
-# 初始化会话状态
+# 会话初始化
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "system", "content": system_prompt}]
 
-# 输入用户身份
+# 输入姓名/学号
 name = st.text_input("请输入你的姓名或学号：", max_chars=50)
 
-# 显示历史对话
-for msg in st.session_state.messages[1:]:  # 跳过 system prompt
+# 显示历史消息
+for msg in st.session_state.messages[1:]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 用户输入
+# 提交内容后调用 DeepSeek API
+def call_deepseek_api(messages, api_key):
+    url = "https://api.deepseek.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek-chat",
+        "messages": messages,
+        "temperature": 0.7
+    }
+    res = requests.post(url, headers=headers, json=payload)
+    res.raise_for_status()
+    return res.json()["choices"][0]["message"]["content"]
+
+# 聊天输入框
 if prompt := st.chat_input("输入你的想法或问题..."):
-    # 添加用户消息
     st.chat_message("user").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # 获取 DeepSeek 回复
     with st.chat_message("assistant"):
-        with st.spinner("正在思考..."):
-            response = openai.ChatCompletion.create(
-                model="deepseek-chat",
-                messages=st.session_state.messages,
-                temperature=0.7,
-            )
-            reply = response.choices[0].message["content"]
+        with st.spinner("DeepSeek 正在思考..."):
+            reply = call_deepseek_api(st.session_state.messages, DEEPSEEK_API_KEY)
             st.markdown(reply)
+            st.session_state.messages.append({"role": "assistant", "content": reply})
 
-    # 添加助手消息
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-
-    # 保存数据
+    # 保存问卷数据
     def extract_user_answers(messages):
-        return "\n".join(m["content"] for m in messages if m["role"] == "user")
+        return "\n".join([m["content"] for m in messages if m["role"] == "user"])
 
     user_answers = extract_user_answers(st.session_state.messages)
-
     if name:
         df = pd.DataFrame([{
             "姓名或学号": name,
