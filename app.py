@@ -9,7 +9,7 @@ st.set_page_config(page_title="课后问卷", layout="centered")
 st.title("📋 交互式课后问卷")
 
 # 设置 API 密钥（注意安全，部署时应使用 secrets 管理）
-openai.api_key = "sk-247a7a2a2e6b404883e104a8edaf658c"  # 替换为你的 DeepSeek Chat 密钥
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # 问卷对话模板
 system_prompt = """
