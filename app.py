@@ -9,8 +9,7 @@ st.set_page_config(page_title="课后问卷", layout="centered")
 st.title("📋 交互式课后问卷")
 
 # 设置 API 密钥
-openai.api_key = st.secrets["DEEPSEEK_API_KEY"]
-
+openai.api_key = "sk-247a7a2a2e6b404883e104a8edaf658c"
 # 问卷对话模板
 system_prompt = """
 你是一位友善且富有洞察力的问卷调查助手，任务是通过对话挖掘学生对课程内容的理解与反馈。
