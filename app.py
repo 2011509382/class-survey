@@ -1,46 +1,71 @@
 import streamlit as st
-import requests
 import os
+import openai
+import pandas as pd
+from datetime import datetime
 
-st.set_page_config(page_title="课后调查问卷 (对话版)", layout="wide")
-st.title("🧠 课后互动问卷助手")
+# 设置页面
+st.set_page_config(page_title="课后问卷", layout="centered")
+st.title("📋 交互式课后问卷")
 
-# 获取 API 密钥
-API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-247a7a2a2e6b404883e104a8edaf658c")
-HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {API_KEY}"
-}
-API_URL = "https://api.deepseek.com/chat/completions"
+# 设置 API 密钥
+openai.api_key = st.secrets["DEEPSEEK_API_KEY"]
 
-# 初始化会话状态
+# 问卷对话模板
+system_prompt = """
+你是一位友善且富有洞察力的问卷调查助手，任务是通过对话挖掘学生对课程内容的理解与反馈。
+你应该循序渐进地提问，引导学生表达他们的真实想法，包含但不限于以下方面：
+1. 课程内容是否清晰，哪些地方没听懂？
+2. 是否对某些知识点感兴趣？
+3. 有没有建议课程改进的地方？
+请用简洁自然的方式提问，不要一次性提太多问题。
+"""
+
+# 会话初始化
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": "你是一个温和而善于启发学生的老师，想调研上课课后问题和答疑。每次只问一个问题，根据学生回答逐步深入。"}
-    ]
+    st.session_state.messages = [{"role": "system", "content": system_prompt}]
 
-# 显示历史消息
-for msg in st.session_state.messages[1:]:
+# 姓名/学号
+name = st.text_input("请输入你的姓名或学号：", max_chars=50)
+
+# 对话界面
+for msg in st.session_state.messages[1:]:  # 跳过 system prompt
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 # 用户输入
-user_input = st.chat_input("今天这节课，你印象最深的情节是什么")
-if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
+if prompt := st.chat_input("输入你的想法或问题..."):
+    # 显示用户消息
+    st.chat_message("user").markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-        st.markdown(user_input)
-
-    # 请求 DeepSeek API
-    payload = {
-        "model": "deepseek-chat",
-        "messages": st.session_state.messages,
-        "temperature": 0.7
-    }
-    response = requests.post(API_URL, headers=HEADERS, json=payload)
-    assistant_reply = response.json()["choices"][0]["message"]["content"]
-
-    st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+    # 获取 DeepSeek 回复
     with st.chat_message("assistant"):
-        st.markdown(assistant_reply)
+        with st.spinner("正在思考..."):
+            response = openai.ChatCompletion.create(
+                model="deepseek-chat",
+                messages=st.session_state.messages,
+                temperature=0.7,
+            )
+            reply = response.choices[0].message["content"]
+            st.markdown(reply)
+
+    # 保存消息
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+
+    # === 自动保存回答 ===
+    def extract_user_answers(messages):
+        user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+        return "\n".join(user_msgs)
+
+    user_answers = extract_user_answers(st.session_state.messages)
+    if name:
+        df = pd.DataFrame([{
+            "姓名或学号": name,
+            "问卷回答": user_answers,
+            "提交时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }])
+        if os.path.exists("responses.csv"):
+            df.to_csv("responses.csv", mode="a", header=False, index=False)
+        else:
+            df.to_csv("responses.csv", index=False)
